@@ -36,10 +36,14 @@ def test_four_accounts_balanced(run_result):
     assert reconcile["all_balanced"] is True
     assert reconcile["diff_count"] == 0
     keys = [item["key"] for item in reconcile["accounts"]]
-    assert keys == ["readings", "intervals", "months", "bills"]
+    assert keys == ["readings", "intervals", "months", "bills", "provisional"]
     for item in reconcile["accounts"]:
         assert item["diff"] == 0
         assert item["balanced"] is True
+    provisional = next(a for a in reconcile["accounts"] if a["key"] == "provisional")
+    # 脏样例的换表对（M0004→M0005）两侧都只有总表，无峰平谷，不产生暂定分量
+    assert provisional["left"] == provisional["right"] == Decimal("0.000")
+    assert provisional["unit"] == "kWh"
 
 
 def test_readings_account_identity(run_result):
@@ -58,11 +62,19 @@ def test_batch_key_changes_with_sample(settings, store):
     assert dirty["batch"]["batch_key"] != clean["batch"]["batch_key"]
 
 
-def test_retry_of_done_batch_recomputes(settings, store, batch_id):
+def test_retry_of_done_batch_replays_without_overwrite(settings, store, batch_id):
+    """发布保护：已完成批次重试只回放，不覆盖原始读数、不新增用量或电费。"""
+    before = store.count_rows(batch_id)
+    totals_before = store.load_totals(batch_id)
+    run_before = store.get_batch(batch_id)["run_id"]
     result = service.retry(settings, store, batch_id)
     assert result["status"] == "done"
     assert result["batch"]["batch_id"] == batch_id
+    assert result["idempotent_replay"] is True
     assert store.count_rows(batch_id)["intervals"] == expected.INTERVALS
+    assert store.count_rows(batch_id) == before
+    assert store.load_totals(batch_id) == totals_before
+    assert store.get_batch(batch_id)["run_id"] == run_before
 
 
 def test_retry_unknown_batch_raises_not_found(settings, store):
@@ -99,3 +111,37 @@ def test_compare_reports_unbalanced_when_diff(settings):
     diffed = [item for item in reconcile["accounts"] if not item["balanced"]]
     assert [item["key"] for item in diffed] == ["intervals"]
     assert diffed[0]["diff"] == 1
+
+
+def test_failed_publish_keeps_previous_committed_version(settings, store, batch_id,
+                                                         monkeypatch):
+    """发布中断：落库阶段抛错时事务整体回滚，上一版读数/用量/电费原样保留。"""
+    before_rows = store.count_rows(batch_id)
+    before_totals = store.load_totals(batch_id)
+    before_readings = store.load_readings(batch_id)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated disk failure during save_run")
+
+    monkeypatch.setattr(store, "save_run", boom)
+    import pytest
+    with pytest.raises(RuntimeError, match="simulated disk failure"):
+        # force 模式走到落库；失败必须回滚而不是留下半批
+        service.run(settings, store, sample="readings_dirty.csv", mode="force")
+
+    # 原始批次与全部已提交数据逐行不变，没有新增用量或电费
+    assert store.get_batch(batch_id)["status"] == "done"
+    assert store.count_rows(batch_id) == before_rows
+    assert store.load_totals(batch_id) == before_totals
+    assert store.load_readings(batch_id) == before_readings
+
+
+def test_rerun_same_package_keeps_usage_and_bill_identical(settings, store, batch_id):
+    """同一抄表包重跑：用量与电费逐位不变，不新增任何行。"""
+    before_bills = store.load_bills(batch_id)
+    before_intervals = store.load_intervals(batch_id)
+    result = service.run(settings, store, sample="readings_dirty.csv")
+    assert result["idempotent_replay"] is True
+    assert result["batch"]["batch_id"] == batch_id
+    assert store.load_bills(batch_id) == before_bills
+    assert store.load_intervals(batch_id) == before_intervals

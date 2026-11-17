@@ -60,6 +60,26 @@ def test_export_decimal_is_fixed_length(client_with_run):
     assert row.split(",")[11] == "249.900"
 
 
+def test_monthly_csv_carries_evidence_columns(client_with_run):
+    """月度 CSV 必须逐行标清实测/暂定与归类依据，不得把归类写成实测。"""
+    body = client_with_run.get("/api/export/monthly.csv").text
+    header = body.splitlines()[0].lstrip("﻿").split(",")
+    assert header[6] == "证据状态"
+    assert header[7] == "归类依据"
+    # 演示样例全部有实测证据：每行证据状态都是「实测」，依据列为空
+    for line in body.splitlines()[1:]:
+        cells = line.split(",")
+        assert cells[6] == "实测"
+        assert cells[7] == ""
+
+
+def test_intervals_csv_carries_reading_evidence_column(client_with_run):
+    body = client_with_run.get("/api/export/intervals.csv").text
+    header = body.splitlines()[0].lstrip("﻿").split(",")
+    assert header[13] == "读数证据"
+    assert any("实测" in line for line in body.splitlines()[1:])
+
+
 def test_export_missing_batch_returns_404(client):
     response = client.get("/api/export/monthly.csv")
     assert response.status_code == 404

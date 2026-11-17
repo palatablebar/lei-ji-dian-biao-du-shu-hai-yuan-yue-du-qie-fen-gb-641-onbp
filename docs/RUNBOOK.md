@@ -34,7 +34,8 @@ curl -sS -o /tmp/monthly.csv http://localhost:18200/api/export/monthly.csv
 ## 3 常见操作
 
 - **同输入重跑**：再点一次「开始处理」或 POST 同一 `sample`，命中批次键，返回同一 `batch_id`，行数与合计不变。
-- **强制重算**：POST `/api/batches/{batch_id}/retry`，用同一个 `sample` 重跑并覆盖该批次的行。
+- **失败重试**：POST `/api/batches/{batch_id}/retry`，仅对 `failed` 批次用同一 `sample` 重算；已完成（`done`）批次的重试只做幂等回放，不覆盖原始读数与已出账结果。
+- **换表旧段暂定归类**：旧表只有首末总读数时，旧段总用量按实测全额出账；峰平谷在月度页与月度 CSV 标「暂定」并写明依据（新表同月实测占比 / 契约权重），补到实测证据后下一批次重算冲回，历史批次保留。
 - **换样例**：下拉框里其余样例分别是干净、GBK 中文表头、末行截断、空文件、仅表头、全空行、表头缺列。
 - **重跑测试**：`docker compose exec -T app python -m pytest -q`。
 - **清库**：`docker compose down -v` 删除命名卷；下次启动自动建表。

@@ -24,7 +24,19 @@
   <div class="kpi"><span class="kpi-label">账单金额</span><span class="kpi-value mono">{{ totals.bill_amount|yuan }}</span><span class="kpi-unit">元</span></div>
   <div class="kpi"><span class="kpi-label">账单</span><span class="kpi-value mono">{{ totals.bill_count }}</span></div>
   <div class="kpi"><span class="kpi-label">尾差组</span><span class="kpi-value mono">{{ adjustments }}</span></div>
+  <div class="kpi"><span class="kpi-label">暂定分量</span><span class="kpi-value mono">{{ provisional_rows }}</span></div>
 </section>
+
+{% if provisional_rows %}
+<section class="panel panel-provisional">
+  <div class="panel-head"><h2 class="panel-title">暂定归类说明（换表旧段）</h2></div>
+  <p class="provisional-note">
+    旧表只有首末总读数：旧段<strong>总用量为实测</strong>，按核定总用量全额出账；
+    旧表无峰平谷证据，下列峰/平/谷行为<strong>暂定归类</strong>（标记「暂定」），
+    不作为实测电费。补到旧段实测峰平谷证据后，下一批次按实测重算并冲回暂定电费。
+  </p>
+</section>
+{% endif %}
 
 {% for group in groups %}
 <section class="panel">
@@ -34,14 +46,22 @@
   </div>
   <div class="table-wrap">
     <table class="table table-dense">
-      <thead><tr><th>表号</th><th>寄存器</th><th class="num">用量</th><th class="num">单位</th><th>尾差</th></tr></thead>
+      <thead><tr><th>表号</th><th>寄存器</th><th>证据</th><th class="num">用量</th><th class="num">单位</th><th>归类依据</th><th>尾差</th></tr></thead>
       <tbody>
         {% for row in group.rows %}
-        <tr>
+        <tr class="{% if row.evidence_status == 'P' %}row-provisional{% else %}row-measured{% endif %}">
           <td class="mono">{{ row.meter_id }}</td>
           <td>{{ row.register|reg }}</td>
+          <td>
+            {% if row.evidence_status == 'P' %}
+            <span class="badge badge-provisional" title="无峰平谷证据，按规则暂定，待补证后调整">暂定</span>
+            {% else %}
+            <span class="badge badge-measured" title="来自累计读数还原的实测值">实测</span>
+            {% endif %}
+          </td>
           <td class="num mono">{{ row.usage_kwh|kwh }}</td>
           <td class="num unit">kWh</td>
+          <td class="cell-note">{% if row.basis_code %}{{ row.basis_code|basis }}{% else %}—{% endif %}</td>
           <td>{% if row.tou_adjusted %}<span class="badge badge-warn">并入</span>{% endif %}</td>
         </tr>
         {% endfor %}
@@ -59,17 +79,29 @@
   <div class="table-wrap">
     <table class="table table-dense" data-sortable>
       <thead><tr><th data-key="month">月份</th><th data-key="meter_id">表号</th><th data-key="usage_kwh" class="num">用量</th>
-        <th data-key="amount_yuan" class="num">金额</th><th data-key="adjust_cents" class="num">尾差</th><th>分项</th></tr></thead>
+        <th data-key="amount_yuan" class="num">金额</th><th data-key="adjust_cents" class="num">尾差</th><th>证据</th><th>分项</th></tr></thead>
       <tbody>
         {% for row in bills %}
-        <tr>
+        <tr class="{% if row.evidence_status == 'P' %}row-provisional{% else %}row-measured{% endif %}">
           <td class="mono">{{ row.month }}</td>
           <td class="mono">{{ row.meter_id }}</td>
           <td class="num mono">{{ row.usage_kwh|kwh }}</td>
           <td class="num mono strong">{{ row.amount_yuan|yuan }}</td>
           <td class="num mono">{{ row.adjust_cents }}</td>
+          <td>
+            {% if row.evidence_status == 'P' %}
+            <span class="badge badge-provisional" title="{{ row.basis_code|basis }}">暂定</span>
+            {% else %}
+            <span class="badge badge-measured">实测</span>
+            {% endif %}
+          </td>
           <td class="cell-flags mono">
-            {% for item in row.components %}<span class="chip">{{ item.register }} {{ item.amount }}</span>{% endfor %}
+            {% for item in row.components %}
+            <span class="chip {% if item.evidence_status == 'P' %}chip-provisional{% else %}chip-measured{% endif %}"
+                  title="{% if item.evidence_status == 'P' %}{{ item.basis_code|basis }}{% else %}实测分项{% endif %}">
+              {{ item.register|reg }} {{ item.amount }}（{% if item.evidence_status == 'P' %}暂定{% else %}实测{% endif %}）
+            </span>
+            {% endfor %}
           </td>
         </tr>
         {% endfor %}

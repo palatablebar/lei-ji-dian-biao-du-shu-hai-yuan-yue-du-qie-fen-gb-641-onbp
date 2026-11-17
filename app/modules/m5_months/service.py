@@ -82,6 +82,11 @@ def payload(allocations: list[dict], bills: list[dict],
             "usage_kwh": str(item["usage_kwh"]),
             "exact_share": str(item["exact_share"]),
             "tou_adjusted": item["tou_adjusted"],
+            "evidence_status": item.get("evidence_status", config.EVIDENCE_MEASURED),
+            "evidence_label": config.EVIDENCE_LABELS.get(
+                item.get("evidence_status", config.EVIDENCE_MEASURED), ""),
+            "basis_code": item.get("basis_code"),
+            "basis_label": config.BASIS_LABELS.get(item.get("basis_code"), ""),
             "register_label": config.REGISTER_LABELS.get(item["register"], item["register"]),
         } for item in allocations],
         "bills": [{
@@ -90,6 +95,11 @@ def payload(allocations: list[dict], bills: list[dict],
             "usage_kwh": str(bill["usage_kwh"]),
             "amount_yuan": str(bill["amount_yuan"]),
             "adjust_cents": bill["adjust_cents"],
+            "evidence_status": bill.get("evidence_status", config.EVIDENCE_MEASURED),
+            "evidence_label": config.EVIDENCE_LABELS.get(
+                bill.get("evidence_status", config.EVIDENCE_MEASURED), ""),
+            "basis_code": bill.get("basis_code"),
+            "basis_label": config.BASIS_LABELS.get(bill.get("basis_code"), ""),
             "components": bill["components"],
         } for bill in bills],
         "months": [{"month": item["month"], "usage_kwh": str(item["usage_kwh"])}

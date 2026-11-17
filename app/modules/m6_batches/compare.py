@@ -19,7 +19,9 @@ def _account(key: str, label: str, left, right, unit: str, note: str = "") -> di
 def build(*, raw_lines: int, valid: int, estimate: int, quarantine: int, blank: int,
           interval_usage: Decimal, month_usage: Decimal,
           tou_before: Decimal, tou_after: Decimal, tou_adjustments: int,
-          bill_total: Decimal, component_total: Decimal, bill_count: int) -> dict:
+          bill_total: Decimal, component_total: Decimal, bill_count: int,
+          provisional_usage: Decimal = Decimal("0"),
+          provisional_buckets: int = 0) -> dict:
     accounts = [
         _account("readings", "读数账", raw_lines,
                  valid + estimate + quarantine + blank, "行",
@@ -27,7 +29,7 @@ def build(*, raw_lines: int, valid: int, estimate: int, quarantine: int, blank: 
         _account("intervals", "区间账",
                  interval_usage.quantize(config.USAGE_QUANT),
                  month_usage.quantize(config.USAGE_QUANT), "kWh",
-                 "主寄存器区间用量 = 月度分摊用量"),
+                 "主寄存器区间用量 = 月度分摊用量（暂定分量不重复计）"),
         _account("months", "月度账",
                  tou_after.quantize(config.USAGE_QUANT), Decimal("0"), "kWh",
                  f"闭合前尾差 {tou_before.quantize(config.USAGE_QUANT)}，"
@@ -36,6 +38,11 @@ def build(*, raw_lines: int, valid: int, estimate: int, quarantine: int, blank: 
                  bill_total.quantize(config.MONEY_QUANT),
                  component_total.quantize(config.MONEY_QUANT), "元",
                  f"{bill_count} 张账单 = 分项金额之和"),
+        _account("provisional", "暂记账",
+                 provisional_usage.quantize(config.USAGE_QUANT),
+                 provisional_usage.quantize(config.USAGE_QUANT), "kWh",
+                 f"{provisional_buckets} 个旧段月桶的暂定峰平谷合计 = 实测总用量"
+                 if provisional_buckets else "本批无暂定归类，暂定不改变任何总用量"),
     ]
     diffs = [item for item in accounts if not item["balanced"]]
     return {"accounts": accounts, "all_balanced": not diffs,

@@ -1,6 +1,6 @@
 # 深度登记 meterback（累计电表读数还原与月度切分）
 
-- 规模：中型（7 个功能模块 / 6 个应用页 / 77 条测试）
+- 规模：中型（7 个功能模块 / 6 个应用页 / 91 条测试）
 - 核心规则：**区间还原 + 按日权重月度切分**。读数按 `(表号, 寄存器, UTC 时间)` 排序后逐对还原：区间用量 =（本次 − 上次）× 综合倍率，满量容量翻转时补容量，换表处拆成「旧表末段 + 新表首读起算」两段，估抄行不作锚点但给区间打标记；区间用量按覆盖天数切到自然月（`[月初, 下月初)` 半开），余数用最大余额法分到 0.001 kWh，同月「总表 = 峰 + 平 + 谷」的残差并入最大分量。
 - 使用者与工作流：临江供电所抄表班 4 人、辖区 8 只示例表（实际 320 只），月度线损与电费原先靠 Excel 手拉；现在一次处理得到「区间用量 + 月度分摊 + 电费」，每个数字都能追回原始行号与原因码。
 
@@ -38,6 +38,8 @@
 | TRAP-18 | 0 字节文件、只有表头、数据行全是空行 | 三种都返回「成功导入 0 行」，或直接除零 | 三个文件级原因码分开返回，不落半批数据 | `app/modules/m1_ingest/service.py` | `tests/test_m1_ingest.py::test_empty_states_return_distinct_codes` |
 | TRAP-23 | 区间止点与下一段起点都算一次 | 相邻区间重复计入一天，月度用量偏高 | 区间与月桶都声明左闭右开 `[起, 止)`，相邻段首尾相接 | `app/modules/m5_months/weights.py`、`app/modules/m4_intervals/restore.py` | `tests/test_m5_months.py::test_month_slices_are_half_open`、`tests/test_m4_intervals.py::test_intervals_are_half_open_and_contiguous` |
 | TRAP-24 | 各月/各分量各自四舍五入后合计不等 | 分完差 0.001~0.02，账永远差几分 | 最大余额法分月；分量残差并入最大分量；账单先合计再舍入，分项补差 | `app/modules/m5_months/weights.py`、`app/modules/m5_months/tou.py` | `tests/test_m5_months.py::test_largest_remainder_keeps_total_exact`、`tests/test_m5_months.py::test_tou_components_closed_to_total` |
+| TRAP-25 | 月中换表，旧表只有首末总读数，硬凑峰平谷会把猜测写成实测电费；不凑又错过关账 | 把按占比估的峰平谷当成实测分量出账，补证后无法区分哪些是真读数 | 旧段总用量按实测全额出账；峰平谷仅作「暂定」归类（证据状态 P + 依据码），三分量合计逐位等于实测总量，补证后下批冲回 | `app/modules/m5_months/provisional.py`、`app/modules/m5_months/allocate.py` | `tests/test_m5_provisional.py`、`tests/test_swap_e2e.py` |
+| TRAP-26 | 发布中断或重跑覆盖了已出账批次，原始读数无法恢复 | 强制重算直接覆盖旧批次行，失败留下半批数据 | 完成批次重试只幂等回放；落库单事务先删后插、失败整体回滚；同输入同批次键不新增行 | `app/modules/m6_batches/service.py`、`app/store.py` | `tests/test_m6_batches.py::test_retry_of_done_batch_replays_without_overwrite`、`tests/test_m6_batches.py::test_failed_publish_keeps_previous_committed_version` |
 
 ## 对账规则
 

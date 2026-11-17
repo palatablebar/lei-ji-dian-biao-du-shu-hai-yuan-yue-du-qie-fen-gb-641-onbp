@@ -67,6 +67,27 @@
 | 新表首读 | 新表第一条读数 | 区间 = [换表时点, 首读时间)，用量从 0 起算 |
 | 估抄 | `read_type = E` | 不作锚点、不参与单调判定，落在区间内时给区间打 `K_ESTIMATE_SKIPPED` |
 
+### 7.1 月中换表旧段的电费归类（实测 vs 暂定）
+
+旧表只有首末总读数、新表切换后才有峰平谷三个分量时，按以下裁决处理，禁止把猜测写成实测：
+
+1. **旧段总用量是实测**：等于旧表首末总读数差值 × 综合倍率，按核定总用量全额计入当月电费，不估算、不少计、不滞后关账。
+2. **旧段峰平谷是暂定，不是实测**：旧表没有峰平谷证据。需要分时电费时，系统按确定性规则补出峰/平/谷「暂定」分量，逐行打证据状态 `P` 与依据码；总表行始终是实测 `M`。
+3. **暂定只拆费率、不改总量**：三个暂定分量之和与旧段实测总用量逐位相等（最大余额法收口到 0.001 kWh），不新增任何用量。
+4. **依据优先级**（同供电点 = 契约 `replaced_by` 指向的新表）：
+   - `SUCCESSOR_TOU`：新表同月峰平谷**实测**占比；
+   - `CONTRACT_WEIGHT`：新表无可用实测时，用 `config.DEFAULT_TOU_WEIGHTS`（峰 0.40 / 平 0.45 / 谷 0.15）。
+   - 旧表与新表契约都只有 `TOTAL`（无峰平谷寄存器）时，不生成暂定分量，旧段按总表单一制电价出账。
+5. **补证冲回**：补到旧段实测峰平谷证据后，下一批次按实测分量重算并冲回暂定电费；历史批次不被覆盖（见第 10 节）。
+
+证据状态字段：
+
+| 字段 | 取值 | 含义 |
+|---|---|---|
+| `evidence_status` | `M` | 实测，来自累计读数还原或新表实测分量 |
+| `evidence_status` | `P` | 暂定，无峰平谷证据，按规则归类，待补证后调整 |
+| `basis_code` | `SUCCESSOR_TOU` / `CONTRACT_WEIGHT` | 暂定归类的依据，仅暂定行非空 |
+
 ## 8 尾差处理
 
 1. 月度切分：按天数权重得到精确份额，各自向下取整后，余数按小数部分从大到小逐份补 0.001，保证每段之和等于区间用量。
@@ -79,6 +100,13 @@
 
 行级 `Q_*`：`Q_COLUMN_COUNT`、`Q_TRUNCATED_ROW`、`Q_MISSING_READING`、`Q_BAD_READING`、`Q_BAD_TIME`、`Q_UNKNOWN_METER`、`Q_BAD_REGISTER`、`Q_BAD_UNIT`、`Q_BAD_READ_TYPE`、`Q_NEGATIVE_READING`、`Q_EXCEEDS_CAPACITY`、`Q_REVERSE_READING`、`Q_DUPLICATE_CONFLICT`、`Q_METER_RETIRED`。
 
-标记 `K_*`：`K_ROLLOVER`、`K_REPLACEMENT_FIRST`、`K_ESTIMATE_SKIPPED`、`K_CHARSET_FALLBACK`、`K_BOM_STRIPPED`、`K_SEGMENT_SPLIT`、`K_TRUNCATED_TAIL`、`K_TOU_ADJUSTED`、`K_BILL_ROUNDED`、`K_UNIT_ASSUMED`、`K_UNIT_CONVERTED`、`K_DUPLICATE_IDENTICAL`。
+标记 `K_*`：`K_ROLLOVER`、`K_REPLACEMENT_FIRST`、`K_ESTIMATE_SKIPPED`、`K_CHARSET_FALLBACK`、`K_BOM_STRIPPED`、`K_SEGMENT_SPLIT`、`K_TRUNCATED_TAIL`、`K_TOU_ADJUSTED`、`K_TOU_PROVISIONAL`、`K_BILL_ROUNDED`、`K_UNIT_ASSUMED`、`K_UNIT_CONVERTED`、`K_DUPLICATE_IDENTICAL`。
 
 唯一来源：`app/reasons.py`；页面与导出的原因文案都从它取。
+
+## 10 批次不可变与发布保护
+
+- **同一抄表包重跑**：批次键 = 规则版本 + 样例名 + 读数/契约/电价三份输入 sha256（`app/manifest.py`）。同输入命中同一 `batch_id`，直接回放，行数、用量、电费逐位不变，不新增任何用量或电费。
+- **已完成批次不可覆盖**：`POST /api/batches/{id}/retry` 对 `status=done` 的批次只做幂等回放；只有 `failed` 批次才重算。覆盖后无法恢复原始读数，因此完成版始终保留。
+- **发布中断回滚**：一次运行的全部行在单事务内「先删后插」（`store.save_run`），任何阶段失败整体回滚，不留半批数据，页面继续展示上一版；失败尝试只写批次与阶段（`save_attempt`），不动已提交数据。
+- **证据可追溯**：月度 CSV 的「证据状态 / 归类依据」列、区间 CSV 的「读数证据」列、运行清单 `provisional_policy` 与 `accounts[].provisional` 同源，暂定与实测在页面和下载里都明确区分。

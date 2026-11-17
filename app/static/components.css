@@ -175,6 +175,15 @@ th[data-key].is-sorted::after { content: " ▾"; font-size: 10px; }
 .badge-warn { background: #f8eed8; color: var(--warn); border-color: #e8d3a6; }
 .badge-bad { background: #f8e3e1; color: var(--bad); border-color: #eec3bf; }
 .badge-plain { background: var(--surface-2); color: var(--ink-muted); border-color: var(--line); }
+.badge-measured { background: #e2f2ea; color: var(--ok); border-color: #bfe0d0; }
+.badge-provisional { background: #f8eed8; color: var(--warn); border-color: #e8d3a6; }
+.row-provisional { background: #fdf8ee; }
+.row-measured { background: transparent; }
+.chip-provisional { background: #f8eed8; color: var(--warn); border-color: #e8d3a6; }
+.chip-measured { background: #e2f2ea; color: var(--ok); border-color: #bfe0d0; }
+.panel-provisional { border-left: 3px solid var(--warn); }
+.provisional-note { margin: 0; padding: 4px 2px; color: var(--ink-muted); font-size: 13px; line-height: 1.7; }
+.provisional-note strong { color: var(--warn); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .chip {

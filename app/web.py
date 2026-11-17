@@ -63,6 +63,8 @@ def setup(app) -> None:
     env.filters["reg"] = lambda r: config.REGISTER_LABELS.get(r, r or "—")
     env.filters["method"] = lambda m: METHOD_LABELS.get(m, m or "—")
     env.filters["code"] = reasons.label
+    env.filters["basis"] = lambda b: config.BASIS_LABELS.get(b, b or "—")
+    env.filters["evidence"] = lambda s: config.EVIDENCE_LABELS.get(s, s or "—")
     env.filters["status"] = lambda s: STATUS_LABELS.get(s, s or "—")
     env.filters["dec"] = fmt_dec
     env.filters["unitnum"] = fmt_unit

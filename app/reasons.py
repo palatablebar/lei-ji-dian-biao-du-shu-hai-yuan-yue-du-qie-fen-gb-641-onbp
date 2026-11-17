@@ -42,6 +42,7 @@ REASONS: dict[str, dict[str, str]] = {
     "K_UNIT_ASSUMED": {"label": "单位按契约补齐", "level": "info"},
     "K_UNIT_CONVERTED": {"label": "单位已折算", "level": "info"},
     "K_DUPLICATE_IDENTICAL": {"label": "重复行已合并", "level": "info"},
+    "K_TOU_PROVISIONAL": {"label": "旧表无峰平谷证据，分时归类为暂定", "level": "warn"},
 }
 
 

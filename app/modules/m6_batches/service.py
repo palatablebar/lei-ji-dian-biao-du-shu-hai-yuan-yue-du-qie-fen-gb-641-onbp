@@ -132,7 +132,9 @@ def run(settings, store, *, sample: str | None = None, mode: str = "full") -> di
         tou_after=allocated["stats"]["tou_residual_after"],
         tou_adjustments=allocated["stats"]["tou_adjustments"],
         bill_total=bill_total, component_total=component_total,
-        bill_count=len(allocated["bills"]))
+        bill_count=len(allocated["bills"]),
+        provisional_usage=allocated["stats"]["provisional_usage"],
+        provisional_buckets=allocated["stats"]["provisional_buckets"])
     stages.append({"stage": "reconcile", "in_count": len(reconcile["accounts"]),
                    "out_count": sum(1 for a in reconcile["accounts"] if a["balanced"]),
                    "quarantine_count": reconcile["diff_count"], "status": "ok",
@@ -162,6 +164,9 @@ def run(settings, store, *, sample: str | None = None, mode: str = "full") -> di
         "month_count": allocated["stats"]["month_count"],
         "meter_count": len(contracts),
         "tou_adjustments": allocated["stats"]["tou_adjustments"],
+        "provisional_components": allocated["stats"]["provisional_components"],
+        "provisional_buckets": allocated["stats"]["provisional_buckets"],
+        "provisional_usage": allocated["stats"]["provisional_usage"],
         "segments": ingested.segments,
         "encoding": ingested.encoding,
         "balanced": "是" if reconcile["all_balanced"] else "否",
@@ -240,6 +245,15 @@ def run(settings, store, *, sample: str | None = None, mode: str = "full") -> di
 
 
 def retry(settings, store, batch_id: str) -> dict:
+    """失败批次可重算；已完成批次只允许幂等回放，绝不覆盖原始读数与已出账结果。
+
+    发布中断（运行中途失败）时旧批次的已提交数据不动：save_run 在单事务里先删后插，
+    失败整体回滚，页面继续展示上一版。这里再加一道闸门，防止对 done 批次强制覆盖。
+    """
+    batch = store.get_batch(batch_id)
+    if batch is not None and batch["status"] == "done":
+        store.touch_batch(batch_id, history.iso(history.now_utc()))
+        return resume.replay_payload(store.get_batch(batch_id), store)
     plan = resume.retry_plan(store, batch_id)
     return run(settings, store, sample=plan["sample"], mode="force")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
+from ... import config
 from ...web import Ctx, get_ctx, render
 from ..m6_batches import resume as resume_mod
 from . import service
@@ -31,10 +32,15 @@ def page_months(request: Request, batch_id: str | None = None,
     groups: list[dict] = []
     bills: list[dict] = []
     adjustments = 0
+    provisional_rows = 0
     if batch is not None:
         allocations = ctx.store.load_allocations(batch["batch_id"])
         bills = ctx.store.load_bills(batch["batch_id"])
         groups = service.rows_by_month(allocations, service.primary_map(ctx.settings))
         adjustments = sum(1 for item in allocations if item["tou_adjusted"])
+        provisional_rows = sum(
+            1 for item in allocations
+            if item.get("evidence_status") == config.EVIDENCE_PROVISIONAL)
     return render(request, "months.html", page="months", page_title="月度分摊",
-                  batch=batch, groups=groups, bills=bills, adjustments=adjustments)
+                  batch=batch, groups=groups, bills=bills, adjustments=adjustments,
+                  provisional_rows=provisional_rows)

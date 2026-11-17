@@ -51,12 +51,14 @@ CREATE TABLE IF NOT EXISTS intervals (
 CREATE TABLE IF NOT EXISTS allocations (
     batch_id TEXT NOT NULL, month TEXT NOT NULL, meter_id TEXT NOT NULL,
     register TEXT NOT NULL, usage_kwh TEXT NOT NULL, exact_share TEXT NOT NULL,
-    tou_adjusted INTEGER NOT NULL DEFAULT 0, sources_json TEXT NOT NULL DEFAULT '[]'
+    tou_adjusted INTEGER NOT NULL DEFAULT 0, sources_json TEXT NOT NULL DEFAULT '[]',
+    evidence_status TEXT NOT NULL DEFAULT 'M', basis_code TEXT
 );
 CREATE TABLE IF NOT EXISTS bills (
     batch_id TEXT NOT NULL, month TEXT NOT NULL, meter_id TEXT NOT NULL,
     usage_kwh TEXT NOT NULL, amount_yuan TEXT NOT NULL,
-    components_json TEXT NOT NULL, adjust_cents INTEGER NOT NULL DEFAULT 0
+    components_json TEXT NOT NULL, adjust_cents INTEGER NOT NULL DEFAULT 0,
+    evidence_status TEXT NOT NULL DEFAULT 'M', basis_code TEXT
 );
 CREATE TABLE IF NOT EXISTS quarantine (
     batch_id TEXT NOT NULL, lineno INTEGER NOT NULL, segment INTEGER NOT NULL,
@@ -91,6 +93,20 @@ class Store:
                        conn.execute("PRAGMA table_info(batches)").fetchall()}
             if "updated_at" not in columns:
                 conn.execute("ALTER TABLE batches ADD COLUMN updated_at TEXT")
+            allocation_cols = {row["name"] for row in
+                               conn.execute("PRAGMA table_info(allocations)").fetchall()}
+            if "evidence_status" not in allocation_cols:
+                conn.execute(
+                    "ALTER TABLE allocations ADD COLUMN evidence_status TEXT NOT NULL DEFAULT 'M'")
+            if "basis_code" not in allocation_cols:
+                conn.execute("ALTER TABLE allocations ADD COLUMN basis_code TEXT")
+            bill_cols = {row["name"] for row in
+                         conn.execute("PRAGMA table_info(bills)").fetchall()}
+            if "evidence_status" not in bill_cols:
+                conn.execute(
+                    "ALTER TABLE bills ADD COLUMN evidence_status TEXT NOT NULL DEFAULT 'M'")
+            if "basis_code" not in bill_cols:
+                conn.execute("ALTER TABLE bills ADD COLUMN basis_code TEXT")
 
     @contextmanager
     def connect(self):
@@ -219,19 +235,22 @@ class Store:
             for a in allocations:
                 conn.execute(
                     """INSERT INTO allocations (batch_id,month,meter_id,register,usage_kwh,
-                        exact_share,tou_adjusted,sources_json)
-                       VALUES (?,?,?,?,?,?,?,?)""",
+                        exact_share,tou_adjusted,sources_json,evidence_status,basis_code)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (b, a["month"], a["meter_id"], a["register"], str(a["usage_kwh"]),
                      str(a["exact_share"]), 1 if a.get("tou_adjusted") else 0,
-                     json.dumps(a.get("sources", []), ensure_ascii=False)))
+                     json.dumps(a.get("sources", []), ensure_ascii=False),
+                     a.get("evidence_status", "M"), a.get("basis_code")))
             for bill in bills:
                 conn.execute(
                     """INSERT INTO bills (batch_id,month,meter_id,usage_kwh,amount_yuan,
-                        components_json,adjust_cents) VALUES (?,?,?,?,?,?,?)""",
+                        components_json,adjust_cents,evidence_status,basis_code)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
                     (b, bill["month"], bill["meter_id"], str(bill["usage_kwh"]),
                      str(bill["amount_yuan"]),
                      json.dumps(bill["components"], ensure_ascii=False),
-                     int(bill.get("adjust_cents", 0))))
+                     int(bill.get("adjust_cents", 0)),
+                     bill.get("evidence_status", "M"), bill.get("basis_code")))
             for q in quarantine:
                 conn.execute(
                     """INSERT INTO quarantine (batch_id,lineno,segment,code,stage,level,
@@ -309,6 +328,7 @@ class Store:
             r["exact_share"] = _dec(r["exact_share"])
             r["sources"] = json.loads(r.pop("sources_json") or "[]")
             r["tou_adjusted"] = bool(r["tou_adjusted"])
+            r["evidence_status"] = r.get("evidence_status") or "M"
         return rows
 
     def load_bills(self, batch_id: str) -> list[dict]:
@@ -318,6 +338,7 @@ class Store:
             r["usage_kwh"] = _dec(r["usage_kwh"])
             r["amount_yuan"] = _dec(r["amount_yuan"])
             r["components"] = json.loads(r.pop("components_json") or "[]")
+            r["evidence_status"] = r.get("evidence_status") or "M"
         return rows
 
     def load_quarantine(self, batch_id: str) -> list[dict]:

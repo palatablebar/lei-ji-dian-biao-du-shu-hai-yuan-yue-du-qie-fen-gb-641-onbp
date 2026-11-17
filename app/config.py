@@ -18,12 +18,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CHINA_TZ = dt.timezone(dt.timedelta(hours=8), "Asia/Shanghai")
 UTC = dt.timezone.utc
 
-RULE_VERSION = "meterback/1.0.0"
+RULE_VERSION = "meterback/1.1.0"
 
 USAGE_QUANT = Decimal("0.001")
 MONEY_QUANT = Decimal("0.01")
 # 满量翻转判定：上一条读数需达到满量的这个比例，否则按倒走隔离
 ROLLOVER_MIN_RATIO = Decimal("0.9")
+
+# 证据状态：M=实测（有读数/分量证据），P=暂定（无证据，按规则归类，待补证后调整）
+EVIDENCE_MEASURED = "M"
+EVIDENCE_PROVISIONAL = "P"
+EVIDENCE_LABELS = {"M": "实测", "P": "暂定"}
+# 暂定归类的依据来源（按优先级取用）
+BASIS_SUCCESSOR_TOU = "SUCCESSOR_TOU"   # 同供电点新表同月峰平谷实测占比
+BASIS_CONTRACT_WEIGHT = "CONTRACT_WEIGHT"  # 契约核定的分时权重
+BASIS_LABELS = {
+    "SUCCESSOR_TOU": "按新表同月实测峰平谷占比暂定",
+    "CONTRACT_WEIGHT": "按契约核定分时权重暂定",
+}
+# 换表旧段补证前的兜底分时权重（无新表实测占比可用时），合计必须为 1
+DEFAULT_TOU_WEIGHTS = {"PEAK": Decimal("0.40"), "FLAT": Decimal("0.45"),
+                       "VALLEY": Decimal("0.15")}
 
 REGISTERS = ("TOTAL", "PEAK", "FLAT", "VALLEY")
 REGISTER_LABELS = {"TOTAL": "总", "PEAK": "峰", "FLAT": "平", "VALLEY": "谷"}

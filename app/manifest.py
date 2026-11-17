@@ -71,5 +71,11 @@ def build(*, run_id: str, batch_id: str, batch_key_value: str, settings, sample:
             for a in reconcile.get("accounts", [])
         ],
         "all_balanced": reconcile.get("all_balanced"),
-        "replayable": "同输入重跑返回同一批次号，行数与合计不变",
+        "provisional_policy": {
+            "measured": "换表旧段总用量来自旧表首末总读数差值，按核定总用量全额出账",
+            "provisional": "旧表无峰平谷证据时，峰平谷按确定性规则暂定，逐行标记 P 与依据码，"
+                           "不写成实测；补到实测证据后下一批次重算并冲回暂定电费",
+            "basis_order": ["SUCCESSOR_TOU", "CONTRACT_WEIGHT"],
+        },
+        "replayable": "同输入重跑返回同一批次号，行数与合计不变；已完成批次不可覆盖",
     }
